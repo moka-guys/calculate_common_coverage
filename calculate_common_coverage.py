@@ -35,7 +35,7 @@ def cli_arguments(args):
 
 class trio_coverage():
     """
-    This class takes a BED file, up to three BAM files and arguments for sambamba coverage.
+    This class takes a BED file, two or three BAM files and arguments for sambamba coverage.
     It will calculate the read depth at each base for each sample and report if this base is covered sufficiently in all samples
     The read depth is calculated using sambamba, mirroring the existing coverage calculation.
     The % of each gene covered sufficiently is calculated by counting the number of bases covered sufficiently and those not covered sufficiently.
@@ -76,7 +76,7 @@ class trio_coverage():
 
     def build_sambamba_opts(self):
         """
-        build and return a string of arguments for the sambamba command.
+        Build and return a string of arguments for the sambamba command.
         Uses countoverlapreadsonce and minbasequal arguments provided as inputs to the script (and captured as class-wide variables)
         """
         opts_string = ""
@@ -91,12 +91,23 @@ class trio_coverage():
 
     def run_sambamba(self, chr, start, stop, bamfile1, bamfile2, bamfile3, opts_list):
         """
-        Build the sambamba command, matching that used in the coverage report
-        Run each command for up to three BAM files for one amplicon, provided in format of chr:start-stop
-        If A BAM file is not provided a default value of " " is given so will not affect command.
-        Output is captured and each line split on tab.
-        Returns: List of lists
+        Build and run the sambamba command for up to three BAM files for one amplicon, provided in format of chr:start-stop
+        Sambamba depth base command is used to output per base coverage
+        Output contains a mix of warning/error messages and base level coverage.
+        Sambamba outputs to stdout which is split into a list of lines.
+        Each line is split on tab, created a list for each line.
+        Inputs:
+            chr - chromosome of amplicon
+            start - start coord of amplicon
+            stop - stop coord of amplicon
+            bamfile1 - path to bamfile1
+            bamfile2 - path to bamfile2
+            bamfile3 - path to bamfile3 (if not provided to script default value is " ")
+            opts_list - string of options created by build_sambamba_opts()
+        Returns:
+            List of lists (list where each item in list is a line, and each element is itself a list, splitting the line on tabs)
         """
+        ## sambamba settings
         # -c minimum mean coverage for output (default: 0 for region/window, 1 for base)
         # -L single region in form chr:beg-end
         # -m detect overlaps of mate reads and handle them on per-base basis (if given)
@@ -115,11 +126,13 @@ class trio_coverage():
     
     def test_amplicons_in_gene(self,entrez):
         """
-        Input: entrez gene id
-        the entrez gene id is the key to self.coverage_dict, which has a value of list of tuples of amplicon coords
+        Look for overlap between adjacent regions within a gene
+        The entrez gene id is the key to self.coverage_dict, which has a value of list of tuples of amplicon coords
         This function parses these and assesses for overlap between adjacent regions
-        TODO not sure this is perfect
-        raises error if they do overlap.
+        Input: 
+            Entrez gene id
+        Returns:
+            Error is raised if overlapping amplicons are found 
         """
         # loop through list of amplicons
         for amplicon in range(0, len(self.coverage_dict[entrez])):
@@ -134,10 +147,16 @@ class trio_coverage():
 
     def parse_sambamba_output(self, sambamba_list):
         """
-        recieves a list of lists, where each list is a line from the sambamba output.
-        Each line contains the read depth at one position for one sample
-        create a new amplicon dictionary with the pos as a key (in form chr:pos) and the value a list of read depths at that position
-        return this dictionary
+        Parses the sambamba output for an amplicon (returned by run_sambamba()), extracting only the relevant lines and fields.
+        Line of interest contains the read depth at one base for one sample. Other lines include warning messages.
+        If it's a line containing a read depth of interest, extract the read depth, and coordinate 
+        Inputs:
+            A list of lists produced by run_sambamba()
+            Each item in the list is a line output from sambamba.
+            Each line has been split on tab into another list.
+            Lines of interest are lists with following format [chrom, pos, cov, a, c, g, t, deleted, refskip, sample]
+        Returns:
+            An amplicon dictionary with the pos as a key (in form chr:pos) and the value a list of read depths at that position
         """
         amplicon_dict = {}
         for line in sambamba_list:
@@ -176,12 +195,14 @@ class trio_coverage():
                     chr,start,stop = amplicon
                     # set length of amplicon, taking into account the zero based, half open BED file 
                     amplicon_length = int(stop)-int(start)+1
-                    # pass coords and BAM files to run_sambamba which produces a list of lists. 
-                    # pass this into self.parse_sambamba_output which outputs a dictionary of RD at each base in the amplicon
-                    amplicon_dict = self.parse_sambamba_output(self.run_sambamba(chr,start,stop,self.bamfile1_path,self.bamfile2_path,self.bamfile3_path,self.build_sambamba_opts()))
+                    # build_sambamba_opts() returns list of sambamba arguments
+                    # pass sambamba arguments, coordinates and BAM files to run_sambamba() 
+                    # pass output of run_sambamba() into parse_sambamba_output() which returns a dictionary of read depths at each base in the amplicon
+                    amplicon_dict = self.parse_sambamba_output( \
+                        self.run_sambamba(chr, start, stop, self.bamfile1_path, self.bamfile2_path, self.bamfile3_path, self.build_sambamba_opts()) \
+                        )
                     
                     # pass this dictionary determining if all samples are covered sufficiently and add to count 
-                    
                     for base in amplicon_dict:
                         # if lowest covered base at this base is less than minimum coverage level add to relevant count.
                         if min(amplicon_dict[base]) < int(self.min_coverage):
@@ -194,11 +215,10 @@ class trio_coverage():
                     # add amplicon counts to gene wide counts
                     gene_level_covered_pass_count += amplicon_base_ok
                     gene_level_covered_fail_count += amplicon_base_fail
+                # calculate percentage of gene covered sufficiently (pass count/total base count)*100
+                gene_percent = str(gene_level_covered_pass_count / (gene_level_covered_pass_count + gene_level_covered_fail_count) * 100)
                 # write gene level results to output file
-                output_file.write("\t".join(\
-                    [entrez, \
-                    str(gene_level_covered_pass_count / (gene_level_covered_pass_count + gene_level_covered_fail_count) * 100),\
-                    "NULL\n"]))
+                output_file.write("\t".join([entrez, gene_percent, "NULL\n"]))
         
     
 

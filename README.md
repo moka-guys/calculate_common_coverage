@@ -25,7 +25,7 @@ NB the BAM indexes must be present in the same folder as the BAM files
   - -q only count bases with a base quality score greater or equal to this value (if given)
   - -F filter reads using the filter ('mapping_quality >= 20')
 
-3. The sambamba output is parsed, and for each gene a count of passing, and failing bases (where the lowest read depth of the provided samples is above or below the minimum required depth)
+3. The sambamba output is parsed, and the % of bases with sufficient coverage (where a base is covered above the minimum read depth in all samples) is reported for each gene.
 
 ## Output
 The script creates a file (named using the path provided as an -o argument)
