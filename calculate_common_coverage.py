@@ -79,6 +79,8 @@ class trio_coverage():
         for entrez in coverage_dict:
             # for each entrezid sort the list on chrom and start and append sorted list to the class-wide dictionary
             self.coverage_dict[entrez] = sorted(coverage_dict[entrez], key=lambda x: (x[0],x[1]))
+            # test each gene for overlapping amplicons
+            self.test_amplicons_in_gene(entrez)
 
     def build_sambamba_opts(self):
         """
@@ -149,7 +151,7 @@ class trio_coverage():
                 # find the coordinates of the next amplicon in bed
                 chr2, start2, stop2 = self.coverage_dict[entrez][amplicon + 1]
                 # check the amplicons don't overlap
-                if chr1 == chr2 and int(start2) < int(stop1):
+                if str(chr1) == str(chr2) and int(start2) < int(stop1):
                     raise AssertionError("BED file has overlapping regions within an entrez gene id")
 
     def parse_sambamba_output(self, sambamba_list):
@@ -186,10 +188,8 @@ class trio_coverage():
         Checks are performed to make sure we are taking into account all bases.
         The entrezgeneID and % covered in all samples is written to the output file provided as an argument to the script.
         """
-        with open(self.output_file_path,'w') as output_file:
-            # for each gene
+        with open(self.output_file_path,'w') as output_file:            
             for entrez in self.coverage_dict:
-                self.test_amplicons_in_gene(entrez)
                 # set up counts for bases which are or are not covered sufficiently in ALL BAMS
                 gene_level_covered_pass_count = 0
                 gene_level_covered_fail_count = 0
@@ -241,7 +241,7 @@ def main(args):
         countoverlapreadsonce=parsed_args.countoverlapreadsonce, \
         minbasequal=parsed_args.minbasequal)
     tc.get_amplicons()
-    tc.calculate_gene_coverage()
+    #tc.calculate_gene_coverage()
 
 if __name__ == '__main__':
     main(sys.argv[1:])
