@@ -67,12 +67,18 @@ class trio_coverage():
     def get_amplicons(self):
         """
         Parse the BED file to populate a dictionary with an entry for each entrez gene id and the value a list of amplicons
+        Sort the amplicons within each gene on chromsome and start to ensure any overlaps would be identified
         """
+        # create a local dict, before sorting
+        coverage_dict = {}
         with open(self.bedfile_path,'r') as bedfile:
             for line in bedfile.readlines():
                 # create dict with entrez_gene_id as key and list of tuples describing amplicon regions
                 chr, start, stop, fourth, fifth, sixth, seventh, entrez = line.rstrip().split("\t")
-                self.coverage_dict.setdefault(entrez, []).append((chr, start, stop))
+                coverage_dict.setdefault(entrez, []).append((chr, start, stop))
+        for entrez in coverage_dict:
+            # for each entrezid sort the list on chrom and start and append sorted list to the class-wide dictionary
+            self.coverage_dict[entrez] = sorted(coverage_dict[entrez], key=lambda x: (x[0],x[1]))
 
     def build_sambamba_opts(self):
         """
@@ -95,7 +101,7 @@ class trio_coverage():
         Sambamba depth base command is used to output per base coverage
         Output contains a mix of warning/error messages and base level coverage.
         Sambamba outputs to stdout which is split into a list of lines.
-        Each line is split on tab, created a list for each line.
+        Each line is split on tab, created a list for each line 
         Inputs:
             chr - chromosome of amplicon
             start - start coord of amplicon
@@ -105,7 +111,8 @@ class trio_coverage():
             bamfile3 - path to bamfile3 (if not provided to script default value is " ")
             opts_list - string of options created by build_sambamba_opts()
         Returns:
-            List of lists (list where each item in list is a line, and each element is itself a list, splitting the line on tabs)
+            List of lists (list where each item in list is a line, and each element is itself a list, splitting the line on tabs 
+            eg [chrom, pos, cov, a, c, g, t, deleted, refskip, sample])
         """
         ## sambamba settings
         # -c minimum mean coverage for output (default: 0 for region/window, 1 for base)
@@ -127,7 +134,7 @@ class trio_coverage():
     def test_amplicons_in_gene(self,entrez):
         """
         Look for overlap between adjacent regions within a gene
-        The entrez gene id is the key to self.coverage_dict, which has a value of list of tuples of amplicon coords
+        The entrez gene id is the key to self.coverage_dict, which has a value of sorted list of tuples of amplicon coords
         This function parses these and assesses for overlap between adjacent regions
         Input: 
             Entrez gene id
@@ -198,8 +205,8 @@ class trio_coverage():
                     # build_sambamba_opts() returns list of sambamba arguments
                     # pass sambamba arguments, coordinates and BAM files to run_sambamba() 
                     # pass output of run_sambamba() into parse_sambamba_output() which returns a dictionary of read depths at each base in the amplicon
-                    amplicon_dict = self.parse_sambamba_output( \
-                        self.run_sambamba(chr, start, stop, self.bamfile1_path, self.bamfile2_path, self.bamfile3_path, self.build_sambamba_opts()) \
+                    amplicon_dict = self.parse_sambamba_output(
+                        self.run_sambamba(chr, start, stop, self.bamfile1_path, self.bamfile2_path, self.bamfile3_path, self.build_sambamba_opts())
                         )
                     
                     # pass this dictionary determining if all samples are covered sufficiently and add to count 
